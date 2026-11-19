@@ -1,0 +1,636 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Analyze HTTP Archive traces on your device with an interactive request waterfall.">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; form-action 'none'; base-uri 'none'">
+  <title>Network Trace Lab</title>
+  <style>:root {
+  color-scheme: dark;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  color: #e9eef5;
+  background: #0a0d12;
+  --panel: #121821;
+  --raised: #171f2a;
+  --border: #2a3443;
+  --muted: #a4b1c3;
+  --accent: #aae4d6;
+  --mono: ui-monospace, "SF Mono", Consolas, monospace;
+  --queue: #8796af;
+  --dns: #bf9ddd;
+  --connect: #7faaff;
+  --tls: #ca84ac;
+  --send: #7fc7d8;
+  --wait: #a9e4d2;
+  --receive: #edbf84;
+  --other: #687489;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; }
+h1, h2, p, dl, dd { margin: 0; }
+h1 { font-size: clamp(22px, 3vw, 32px); font-weight: 680; letter-spacing: -.045em; }
+h2 { font-size: 15px; letter-spacing: -.01em; }
+.app { max-width: 1560px; margin: 0 auto; padding: 30px clamp(16px, 3.3vw, 52px) 16px; }
+.top, .trace-head, .panel-top, .panel-foot, .brand, .top-actions {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.top { padding: 0 0 24px; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
+.brand { justify-content: flex-start; min-width: 0; }
+.brand p { margin-top: 4px; font-size: 13px; color: var(--muted); }
+.brand-icon { display: grid; align-content: center; gap: 4px; width: 43px; height: 43px; padding: 9px; background: #132721; border: 1px solid #386256; border-radius: 7px; flex: none; }
+.brand-icon i { display: block; background: var(--accent); height: 3px; }
+.brand-icon i:nth-child(1) { width: 9px; }
+.brand-icon i:nth-child(2) { margin-left: 5px; width: 17px; }
+.brand-icon i:nth-child(3) { margin-left: 12px; width: 10px; }
+.top-actions { justify-content: flex-start; flex-wrap: wrap; }
+button, input, select { font: inherit; color: inherit; }
+button, select, input[type="search"] { min-height: 34px; border-radius: 5px; border: 1px solid var(--border); background: #19212c; }
+button { padding: 6px 11px; font-size: 13px; white-space: nowrap; cursor: pointer; }
+button:hover:enabled { background: #253243; border-color: #516178; }
+.primary { background: var(--accent); color: #10231e; border-color: #85c5b4; font-weight: 700; }
+.primary:hover:enabled { background: #c1f2e6; color: #10231e; }
+button:disabled { cursor: default; opacity: .5; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.trace-head { margin-bottom: 12px; }
+.trace-source { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.trace-source strong { font: 600 13px var(--mono); overflow-wrap: anywhere; }
+.trace-source span:last-child, #notice, footer { color: var(--muted); font-size: 12px; }
+.trace-indicator { background: var(--accent); width: 6px; height: 6px; border-radius: 50%; flex: none; }
+#notice:not(:empty) { margin-bottom: 12px; }
+#notice[data-error="true"] { color: #ffc0b7; }
+.metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+.metric { padding: 14px 15px; border: 1px solid var(--border); background: var(--panel); border-radius: 7px; }
+.metric dt { color: var(--muted); font-size: 12px; margin-bottom: 3px; }
+.metric dd { font: 640 clamp(18px, 2.25vw, 31px)/1.2 var(--mono); letter-spacing: -.065em; overflow-wrap: anywhere; }
+.metric small { display: block; min-height: 17px; margin-top: 5px; font: 11px/1.4 system-ui, sans-serif; color: var(--muted); letter-spacing: normal; }
+.workspace { display: grid; grid-template-columns: minmax(0, 1fr) minmax(275px, .37fr); gap: 14px; align-items: start; }
+.panel { min-width: 0; border: 1px solid var(--border); background: var(--panel); border-radius: 8px; overflow: hidden; }
+.panel-top { padding: 14px 15px; border-bottom: 1px solid var(--border); }
+#shown { color: var(--muted); font: 11px var(--mono); white-space: nowrap; }
+.filters { display: flex; align-items: end; flex-wrap: wrap; gap: 9px; padding: 11px 14px; }
+.filters label { display: grid; gap: 5px; flex: 1 1 107px; min-width: 0; }
+.filters .search { flex: 2 1 172px; }
+.filters label span { color: var(--muted); font-size: 11px; }
+input[type="search"], select { min-width: 0; width: 100%; padding: 5px 7px; font-size: 12px; }
+.table-scroll { max-height: 540px; overflow: auto; border-top: 1px solid var(--border); }
+table { border-collapse: separate; border-spacing: 0; width: 100%; min-width: 560px; table-layout: fixed; }
+.request-col { width: 30%; }
+.status-col { width: 55px; }
+.duration-col { width: 80px; }
+thead { position: sticky; top: 0; z-index: 1; background: #171f2a; }
+th { height: 36px; font-size: 11px; font-weight: 600; color: var(--muted); text-align: start; }
+th, td { border-bottom: 1px solid #25303d; padding: 3px 8px; }
+th:first-child, td:first-child { padding-left: 14px; }
+tbody tr:hover { background: #17202b; }
+tbody tr[data-selected="true"] { background: #19302e; }
+tbody tr[data-selected="true"] td:first-child { box-shadow: inset 3px 0 #84ccba; }
+.numeric { text-align: right; padding-right: 13px; }
+td.numeric, .http-status, .detail-metadata dd, .phase-time { font: 12px var(--mono); }
+.request-button { display: block; text-align: left; width: 100%; min-height: 35px; border: 0; padding: 3px 0; background: none; border-radius: 2px; }
+.request-button:hover:enabled { background: none; }
+.request-path, .request-meta { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.request-path { font: 600 12px var(--mono); }
+.request-meta { color: var(--muted); font-size: 10px; margin-top: 3px; }
+.http-status { color: #acdacb; }
+.http-status[data-type="error"] { color: #ffb6ac; }
+.http-status[data-type="redirect"] { color: #ecce93; }
+.http-status[data-type="unknown"] { color: var(--muted); }
+#axis { position: relative; height: 28px; }
+#axis span { position: absolute; top: 7px; transform: translateX(-50%); font: 10px var(--mono); white-space: nowrap; }
+#axis span:first-child { transform: none; }
+#axis span:last-child { transform: translateX(-100%); }
+.waterfall {
+  position: relative; height: 22px; overflow: hidden;
+  background: repeating-linear-gradient(90deg, #37445670 0 1px, transparent 1px 25%);
+  border-right: 1px solid #37445670;
+}
+.bar { position: absolute; top: 6px; height: 10px; min-width: 2px; display: flex; align-items: stretch; overflow: hidden; border-radius: 2px; background: var(--other); }
+.segment { min-width: 0; }
+.phase-queue { background: var(--queue); }
+.phase-dns { background: var(--dns); }
+.phase-connect { background: var(--connect); }
+.phase-tls { background: var(--tls); }
+.phase-send { background: var(--send); }
+.phase-wait { background: var(--wait); }
+.phase-receive { background: var(--receive); }
+.phase-other { background: var(--other); }
+.panel-foot { align-items: start; flex-wrap: wrap; padding: 11px 14px; }
+.legend, .pager { display: flex; align-items: center; flex-wrap: wrap; gap: 7px 11px; }
+.legend span { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); }
+.swatch { display: inline-block; width: 8px; height: 8px; border-radius: 2px; flex: none; }
+.pager button { min-height: 27px; font-size: 11px; padding: 3px 7px; }
+.empty { padding: 25px 14px; color: var(--muted); font-size: 13px; }
+#details { padding: 14px 15px 18px; }
+.detail-name { font: 600 14px/1.5 var(--mono); overflow-wrap: anywhere; }
+.detail-host { margin-top: 3px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.detail-metadata { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 15px 0; border-bottom: 1px solid var(--border); }
+.detail-metadata dt { font-size: 11px; color: var(--muted); margin-bottom: 3px; }
+.detail-metadata dd { overflow-wrap: anywhere; }
+.phase-title { font-size: 12px; font-weight: 650; margin: 14px 0 10px; }
+.phase-line { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px; }
+.phase-name { display: flex; align-items: center; gap: 7px; color: var(--muted); }
+.phase-track { height: 9px; display: flex; overflow: hidden; border-radius: 2px; background: var(--other); }
+footer { padding: 14px 0; }
+#drop { position: fixed; inset: 12px; display: grid; place-items: center; background: #0b1716e8; border: 2px dashed var(--accent); border-radius: 12px; z-index: 5; pointer-events: none; color: var(--accent); font-size: 20px; }
+@media (max-width: 990px) { .workspace { grid-template-columns: 1fr; } }
+@media (max-width: 580px) {
+  .app { padding-top: 17px; }
+  .top { align-items: flex-start; flex-direction: column; padding-bottom: 17px; }
+  .metrics { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .metric { padding: 10px 11px; }
+  .trace-head { align-items: flex-start; }
+  .panel-top { padding-inline: 11px; }
+}
+</style>
+</head>
+<body>
+  <div class="app">
+    <header class="top">
+      <div class="brand">
+        <div class="brand-icon" aria-hidden="true"><i></i><i></i><i></i></div>
+        <div><h1>Network Trace Lab</h1><p>Inspect a HAR trace on your device.</p></div>
+      </div>
+      <div class="top-actions">
+        <button id="demo" type="button">Load demo</button>
+        <button id="open" class="primary" type="button">Open HAR</button>
+        <input id="file" type="file" accept=".har,.json,application/json" hidden>
+      </div>
+    </header>
+
+    <main>
+      <div class="trace-head">
+        <div class="trace-source"><span class="trace-indicator" aria-hidden="true"></span><strong id="source"></strong><span id="source-kind"></span></div>
+        <button id="export" type="button">Export metrics</button>
+      </div>
+      <p id="notice" role="status" aria-live="polite"></p>
+      <dl id="metrics" class="metrics" aria-label="Trace metrics"></dl>
+      <div class="workspace">
+        <section class="panel timeline" aria-labelledby="timeline-title">
+          <div class="panel-top"><h2 id="timeline-title">Request waterfall</h2><span id="shown" aria-live="polite"></span></div>
+          <div class="filters">
+            <label class="search"><span>Find a request</span><input id="query" type="search" placeholder="Path, host or method"></label>
+            <label><span>Host</span><select id="host"><option value="">All hosts</option></select></label>
+            <label><span>Status</span><select id="status"><option value="">All statuses</option><option value="error">HTTP 4xx / 5xx</option><option value="redirect">Redirects</option><option value="unknown">No HTTP status</option></select></label>
+            <label><span>Sort by</span><select id="order"><option value="start">Start time</option><option value="duration">Longest first</option><option value="bytes">Largest first</option></select></label>
+          </div>
+          <div class="table-scroll">
+            <table>
+              <colgroup><col class="request-col"><col class="status-col"><col class="waterfall-col"><col class="duration-col"></colgroup>
+              <thead><tr><th scope="col">Request</th><th scope="col">HTTP</th><th scope="col"><div id="axis" aria-label="Time since start of trace"></div></th><th scope="col" class="numeric">Time</th></tr></thead>
+              <tbody id="requests"></tbody>
+            </table>
+          </div>
+          <div class="panel-foot">
+            <div id="legend" class="legend" aria-label="Timing phases"></div>
+            <div id="pager" class="pager" hidden><button id="previous" type="button">Previous</button><button id="next" type="button">Next</button></div>
+          </div>
+        </section>
+        <aside class="panel inspector" aria-labelledby="detail-title">
+          <div class="panel-top"><h2 id="detail-title">Request details</h2><span id="detail-status"></span></div>
+          <div id="details"></div>
+        </aside>
+      </div>
+    </main>
+    <footer>Drop a HAR anywhere to open it. Details stay in this browser.</footer>
+  </div>
+  <div id="drop" hidden aria-hidden="true"><strong>Drop to open HAR</strong></div>
+  <script>const phases = [
+  ['queue', 'Queue'],
+  ['dns', 'DNS'],
+  ['connect', 'Connect'],
+  ['tls', 'TLS'],
+  ['send', 'Send'],
+  ['wait', 'Wait'],
+  ['receive', 'Receive'],
+  ['other', 'Unattributed'],
+]
+
+const nonnegative = value => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null
+
+function readTimings(entry) {
+  const timings = entry.timings ?? {}
+  const connect = nonnegative(timings.connect)
+  const ssl = nonnegative(timings.ssl)
+  const tls = connect === null || ssl === null ? null : Math.min(connect, ssl)
+  const values = {
+    queue: nonnegative(timings.blocked),
+    dns: nonnegative(timings.dns),
+    connect: connect === null ? null : connect - (tls ?? 0),
+    tls,
+    send: nonnegative(timings.send),
+    wait: nonnegative(timings.wait),
+    receive: nonnegative(timings.receive),
+  }
+  const known = Object.values(values).filter(value => value !== null)
+  const measured = known.reduce((sum, value) => sum + value, 0)
+  const reported = nonnegative(entry.time)
+  const duration = reported ?? (known.length ? measured : null)
+  const scale = duration !== null && measured > duration ? duration / measured : 1
+  values.other = duration === null ? null : Math.max(0, duration - measured)
+  return {
+    duration,
+    timings: values,
+    segments: phases.flatMap(([key]) => values[key] > 0
+      ? [{ key, duration: key === 'other' ? values[key] : values[key] * scale }]
+      : []),
+  }
+}
+
+function transferSize(response) {
+  const actual = nonnegative(response?._transferSize)
+  if (actual !== null) return actual
+  const headers = nonnegative(response?.headersSize)
+  const body = nonnegative(response?.bodySize)
+  return headers === null || body === null ? null : headers + body
+}
+
+function readEntry(entry, id) {
+  const started = typeof entry?.startedDateTime === 'string' ? Date.parse(entry.startedDateTime) : NaN
+  if (!Number.isFinite(started) || typeof entry?.request?.url !== 'string') return null
+  let url
+  try {
+    url = new URL(entry.request.url)
+  } catch {
+    return null
+  }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') return null
+  const path = url.pathname || '/'
+  const method = typeof entry.request.method === 'string' ? entry.request.method.slice(0, 20) : '—'
+  const type = typeof entry._resourceType === 'string' ? entry._resourceType.slice(0, 40) : null
+  const mime = typeof entry.response?.content?.mimeType === 'string'
+    ? entry.response.content.mimeType.split(';')[0].trim().slice(0, 100)
+    : null
+  return {
+    id, started, host: url.host, path, method, type, mime,
+    status: nonnegative(entry.response?.status),
+    bytes: transferSize(entry.response),
+    ...readTimings(entry),
+  }
+}
+
+function readHar(har) {
+  if (!Array.isArray(har?.log?.entries)) {
+    throw new Error('This file needs a HAR log with an entries array.')
+  }
+  const rows = har.log.entries.map(readEntry).filter(Boolean).sort((a, b) => a.started - b.started)
+  const origin = rows[0]?.started ?? 0
+  for (const row of rows) row.offset = row.started - origin
+  return { rows, skipped: har.log.entries.length - rows.length, summary: summarize(rows) }
+}
+
+function summarize(rows) {
+  let spanMs = null
+  let httpErrors = 0
+  let unknownStatus = 0
+  let transferredBytes = 0
+  let transfersMeasured = 0
+  const durations = []
+  for (const row of rows) {
+    if (row.duration !== null) {
+      durations.push(row.duration)
+      spanMs = Math.max(spanMs ?? 0, row.offset + row.duration)
+    }
+    if (row.status === null || row.status === 0) unknownStatus++
+    else if (row.status >= 400) httpErrors++
+    if (row.bytes !== null) {
+      transferredBytes += row.bytes
+      transfersMeasured++
+    }
+  }
+  durations.sort((a, b) => a - b)
+  return {
+    requests: rows.length,
+    spanMs,
+    p95Ms: durations[Math.ceil(durations.length * 0.95) - 1] ?? null,
+    durationsMeasured: durations.length,
+    httpErrors,
+    unknownStatus,
+    transferredBytes: transfersMeasured ? transferredBytes : null,
+    transfersMeasured,
+  }
+}
+
+function selectRows(rows, filters) {
+  const query = filters.query.trim().toLowerCase()
+  const selected = rows.filter(row => {
+    if (filters.host && row.host !== filters.host) return false
+    if (filters.status === 'error' && (row.status === null || row.status < 400)) return false
+    if (filters.status === 'redirect' && (row.status === null || row.status < 300 || row.status >= 400)) return false
+    if (filters.status === 'unknown' && row.status !== null && row.status !== 0) return false
+    return !query || (row.host + row.path + ' ' + row.method + ' ' + (row.type ?? '')).toLowerCase().includes(query)
+  })
+  const key = filters.order === 'duration' ? 'duration' : filters.order === 'bytes' ? 'bytes' : null
+  if (key) selected.sort((a, b) => (b[key] ?? -1) - (a[key] ?? -1))
+  return selected
+}
+
+function demoHar() {
+  const demo = [
+    [0, '/', 'shop.example', 'document', 200, 18, 19, 94, 191, 71, 26540],
+    [375, '/assets/app.css', 'cdn.shop.example', 'stylesheet', 200, 8, 17, 74, 78, 88, 59382],
+    [393, '/assets/app.js', 'cdn.shop.example', 'script', 200, 13, -1, -1, 83, 223, 204120],
+    [420, '/assets/brand.woff2', 'cdn.shop.example', 'font', 200, 1, -1, -1, 127, 51, 25340],
+    [433, '/images/hero.webp', 'cdn.shop.example', 'image', 200, 5, -1, -1, 110, 525, 341329],
+    [540, '/api/catalog', 'shop.example', 'fetch', 200, 24, -1, -1, 1239, 177, 46892],
+    [621, '/api/session', 'shop.example', 'fetch', 200, 17, -1, -1, 228, 20, 4031],
+    [658, '/assets/checkout.js', 'cdn.shop.example', 'script', 200, 93, -1, -1, 123, 88, 91323],
+    [830, '/api/cart', 'shop.example', 'fetch', 200, 8, -1, -1, 353, 42, 11383],
+    [910, '/images/pack.webp', 'cdn.shop.example', 'image', 200, 6, -1, -1, 44, 352, 218139],
+    [1120, '/api/recommendations', 'shop.example', 'fetch', 503, 19, -1, -1, 462, 27, 930],
+    [1207, '/assets/icons.svg', 'cdn.shop.example', 'image', 200, 0, -1, -1, 3, 3, 0],
+    [1240, '/images/detail.webp', 'cdn.shop.example', 'image', 200, 28, -1, -1, 132, 367, 155810],
+    [1554, '/api/inventory', 'shop.example', 'fetch', 200, 16, -1, -1, 253, 72, 7659],
+    [2020, '/api/shipping', 'shop.example', 'fetch', 200, 11, -1, -1, 528, 64, 6103],
+    [2380, '/api/metrics', 'shop.example', 'fetch', 204, 2, -1, -1, 144, 0, 218],
+  ]
+  const epoch = Date.parse('2026-01-01T12:00:00Z')
+  const entries = demo.map(([offset, path, host, type, status, blocked, dns, connect, wait, receive, bytes]) => {
+    const timings = { blocked, dns, connect, ssl: connect < 0 ? -1 : Math.round(connect * 0.6), send: 2, wait, receive }
+    return {
+      startedDateTime: new Date(epoch + offset).toISOString(),
+      time: blocked + Math.max(0, dns) + Math.max(0, connect) + timings.send + wait + receive,
+      request: { method: 'GET', url: 'https://' + host + path },
+      response: { status, _transferSize: bytes },
+      timings,
+      _resourceType: type,
+    }
+  })
+  return { log: { version: '1.2', creator: { name: 'Network Trace Lab demo', version: '1' }, entries } }
+}
+
+
+const get = id => document.getElementById(id)
+const pageSize = 60
+const numbers = new Intl.NumberFormat('en', { maximumFractionDigits: 1 })
+const integer = new Intl.NumberFormat('en', { maximumFractionDigits: 0 })
+let trace
+let picked = null
+let page = 0
+let importId = 0
+
+function el(tag, text, className) {
+  const element = document.createElement(tag)
+  if (text !== undefined) element.textContent = text
+  if (className) element.className = className
+  return element
+}
+
+function ms(value) {
+  if (value === null) return '—'
+  return value >= 1000 ? numbers.format(value / 1000) + ' s' : numbers.format(value) + ' ms'
+}
+
+function size(value) {
+  if (value === null) return '—'
+  if (value < 1024) return integer.format(value) + ' B'
+  if (value < 1024 ** 2) return numbers.format(value / 1024) + ' KiB'
+  return numbers.format(value / 1024 ** 2) + ' MiB'
+}
+
+function statusLabel(value) {
+  const node = el('span', value || '—', 'http-status')
+  node.dataset.type = !value ? 'unknown' : value >= 400 ? 'error' : value >= 300 ? 'redirect' : 'ok'
+  return node
+}
+
+function setNotice(text = '', error = false) {
+  get('notice').textContent = text
+  get('notice').dataset.error = String(error)
+}
+
+function addMetric(container, title, value, caption) {
+  const metric = el('div', undefined, 'metric')
+  const valueCell = el('dd', value)
+  const help = el('small', caption)
+  const label = el('dt', title)
+  valueCell.append(help)
+  metric.append(label, valueCell)
+  container.append(metric)
+}
+
+function drawMetrics() {
+  const summary = trace.summary
+  const metrics = get('metrics')
+  metrics.replaceChildren()
+  const errors = summary.httpErrors + ' HTTP ' + (summary.httpErrors === 1 ? 'error' : 'errors')
+  addMetric(metrics, 'Requests', integer.format(summary.requests), errors)
+  addMetric(metrics, 'Trace span', ms(summary.spanMs), 'First start to last measured finish')
+  addMetric(metrics, 'P95 duration', ms(summary.p95Ms), 'Across ' + integer.format(summary.durationsMeasured) + ' measured requests')
+  addMetric(metrics, 'Measured transfer', size(summary.transferredBytes), integer.format(summary.transfersMeasured) + ' of ' + integer.format(summary.requests) + ' requests')
+}
+
+function drawAxis() {
+  const axis = get('axis')
+  axis.replaceChildren()
+  for (let step = 0; step <= 4; step++) {
+    const tick = el('span', ms((trace.summary.spanMs ?? 0) * step / 4))
+    tick.style.left = step * 25 + '%'
+    axis.append(tick)
+  }
+}
+
+function appendSegments(track, row) {
+  for (const segment of row.segments) {
+    const element = el('span', undefined, 'segment phase-' + segment.key)
+    element.style.flexGrow = segment.duration
+    track.append(element)
+  }
+}
+
+function makeRow(row) {
+  const tr = el('tr')
+  tr.dataset.id = row.id
+  tr.dataset.selected = String(row.id === picked?.id)
+  const request = el('td')
+  const button = el('button', undefined, 'request-button')
+  button.type = 'button'
+  button.setAttribute('aria-pressed', tr.dataset.selected)
+  button.title = row.method + ' ' + row.host + row.path
+  button.append(el('span', row.path, 'request-path'), el('span', row.method + ' · ' + (row.type || row.host), 'request-meta'))
+  request.append(button)
+
+  const code = el('td')
+  code.append(statusLabel(row.status))
+  const timeline = el('td')
+  const waterfall = el('div', undefined, 'waterfall')
+  const bar = el('div', undefined, 'bar')
+  const scale = Math.max(1, trace.summary.spanMs ?? 0)
+  bar.style.left = Math.min(100, row.offset / scale * 100) + '%'
+  bar.style.width = (row.duration ?? 0) / scale * 100 + '%'
+  bar.title = ms(row.offset) + ' after start · ' + ms(row.duration)
+  appendSegments(bar, row)
+  waterfall.append(bar)
+  timeline.append(waterfall)
+  tr.append(request, code, timeline, el('td', ms(row.duration), 'numeric'))
+  return tr
+}
+
+function detailPair(container, label, value) {
+  const pair = el('div')
+  pair.append(el('dt', label), el('dd', value))
+  container.append(pair)
+}
+
+function drawDetails() {
+  const details = get('details')
+  const status = get('detail-status')
+  details.replaceChildren()
+  status.replaceChildren()
+  if (!picked) {
+    details.append(el('p', 'Select a visible request to inspect its timings.', 'detail-host'))
+    return
+  }
+  status.append(statusLabel(picked.status))
+  details.append(el('p', picked.method + ' ' + picked.path, 'detail-name'), el('p', picked.host, 'detail-host'))
+  const metadata = el('dl', undefined, 'detail-metadata')
+  detailPair(metadata, 'Start offset', ms(picked.offset))
+  detailPair(metadata, 'Duration', ms(picked.duration))
+  detailPair(metadata, 'Transfer', size(picked.bytes))
+  detailPair(metadata, 'Type', picked.type ?? picked.mime ?? '—')
+  details.append(metadata, el('p', 'Timing breakdown', 'phase-title'))
+  const phaseTrack = el('div', undefined, 'phase-track')
+  phaseTrack.setAttribute('aria-hidden', 'true')
+  appendSegments(phaseTrack, picked)
+  details.append(phaseTrack)
+  for (const [key, name] of phases) {
+    if (picked.timings[key] === null || (key === 'other' && picked.timings[key] === 0)) continue
+    const line = el('div', undefined, 'phase-line')
+    const label = el('span', undefined, 'phase-name')
+    label.append(el('i', undefined, 'swatch phase-' + key), el('span', name))
+    line.append(label, el('span', ms(picked.timings[key]), 'phase-time'))
+    details.append(line)
+  }
+}
+
+function drawTable() {
+  const rows = selectRows(trace.rows, {
+    query: get('query').value, host: get('host').value,
+    status: get('status').value, order: get('order').value,
+  })
+  const lastPage = Math.max(0, Math.ceil(rows.length / pageSize) - 1)
+  page = Math.min(lastPage, page)
+  const offset = page * pageSize
+  const visible = rows.slice(offset, offset + pageSize)
+  if (!visible.some(row => row.id === picked?.id)) picked = visible[0] ?? null
+  const body = get('requests')
+  body.replaceChildren(...visible.map(makeRow))
+  if (!visible.length) {
+    const row = el('tr')
+    const empty = el('td', trace.rows.length ? 'No requests match these filters.' : 'This trace has no HTTP requests with valid timestamps.', 'empty')
+    empty.colSpan = 4
+    row.append(empty)
+    body.append(row)
+  }
+  get('shown').textContent = visible.length
+    ? integer.format(offset + 1) + '–' + integer.format(offset + visible.length) + ' of ' + integer.format(rows.length)
+    : '0 requests'
+  get('pager').hidden = !lastPage
+  get('previous').disabled = page <= 0
+  get('next').disabled = page >= lastPage
+  body.closest('.table-scroll').scrollTop = 0
+  drawDetails()
+}
+
+function load(data, name, demo = false) {
+  const incoming = readHar(data)
+  trace = incoming
+  get('source').textContent = name
+  get('source-kind').textContent = demo ? 'Demo trace' : 'Local file'
+  get('query').value = ''
+  get('status').value = ''
+  get('order').value = 'start'
+  page = 0
+  const hosts = [...new Set(trace.rows.map(row => row.host))].sort()
+  const hostSelect = get('host')
+  hostSelect.replaceChildren(new Option('All hosts', ''))
+  for (const host of hosts) hostSelect.add(new Option(host, host))
+  picked = trace.rows.slice(0, pageSize).reduce((longest, row) => (
+    (row.duration ?? -1) > (longest?.duration ?? -1) ? row : longest
+  ), null)
+  setNotice(trace.skipped ? integer.format(trace.skipped) + ' entries skipped due to unsupported URLs or invalid timestamps.' : '')
+  get('export').disabled = !trace.rows.length
+  drawMetrics()
+  drawAxis()
+  drawTable()
+}
+
+async function openFile(file) {
+  if (!file) return
+  const id = ++importId
+  if (file.size > 25 * 1024 * 1024) {
+    setNotice('Choose a HAR of 25 MiB or less.', true)
+    return
+  }
+  setNotice('Reading ' + file.name + '…')
+  try {
+    const text = (await file.text()).replace(/^\uFEFF/, '')
+    if (id === importId) load(JSON.parse(text), file.name)
+  } catch (error) {
+    if (id === importId) {
+      setNotice(error instanceof SyntaxError ? 'This file does not contain valid JSON.' : error.message, true)
+    }
+  }
+}
+
+get('demo').addEventListener('click', () => {
+  importId++
+  load(demoHar(), 'storefront.har', true)
+})
+get('open').addEventListener('click', () => get('file').click())
+get('file').addEventListener('change', event => {
+  openFile(event.target.files[0])
+  event.target.value = ''
+})
+for (const id of ['query', 'host', 'status', 'order']) {
+  get(id).addEventListener(id === 'query' ? 'input' : 'change', () => { page = 0; drawTable() })
+}
+get('previous').addEventListener('click', () => { page--; drawTable() })
+get('next').addEventListener('click', () => { page++; drawTable() })
+get('requests').addEventListener('click', event => {
+  const row = event.target.closest('tr[data-id]')
+  if (!row) return
+  picked = trace.rows.find(request => request.id === Number(row.dataset.id))
+  for (const tr of get('requests').querySelectorAll('tr[data-id]')) {
+    tr.dataset.selected = String(tr === row)
+    tr.querySelector('button').setAttribute('aria-pressed', tr.dataset.selected)
+  }
+  drawDetails()
+})
+get('export').addEventListener('click', () => {
+  const object = new Blob([JSON.stringify(trace.summary, null, 2) + '\n'], { type: 'application/json' })
+  const url = URL.createObjectURL(object)
+  const link = el('a')
+  link.href = url
+  link.download = 'trace-metrics.json'
+  document.body.append(link)
+  link.click()
+  link.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+})
+
+window.addEventListener('dragover', event => {
+  if (!Array.from(event.dataTransfer.types).includes('Files')) return
+  event.preventDefault()
+  get('drop').hidden = false
+})
+window.addEventListener('dragleave', event => {
+  if (!event.relatedTarget) get('drop').hidden = true
+})
+window.addEventListener('drop', event => {
+  if (!event.dataTransfer.files.length) return
+  event.preventDefault()
+  get('drop').hidden = true
+  openFile(event.dataTransfer.files[0])
+})
+
+for (const [key, label] of phases) {
+  const item = el('span')
+  item.append(el('i', undefined, 'swatch phase-' + key), document.createTextNode(label))
+  get('legend').append(item)
+}
+load(demoHar(), 'storefront.har', true)
+</script>
+</body>
+</html>

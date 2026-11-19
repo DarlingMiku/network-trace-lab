@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Analyze HTTP Archive traces on your device with an interactive request waterfall.">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; form-action 'none'; base-uri 'none'">
+  <title>Network Trace Lab</title>
+  <style>/* APP_STYLES */</style>
+</head>
+<body>
+  <div class="app">
+    <header class="top">
+      <div class="brand">
+        <div class="brand-icon" aria-hidden="true"><i></i><i></i><i></i></div>
+        <div><h1>Network Trace Lab</h1><p>Inspect a HAR trace on your device.</p></div>
+      </div>
+      <div class="top-actions">
+        <button id="demo" type="button">Load demo</button>
+        <button id="open" class="primary" type="button">Open HAR</button>
+        <input id="file" type="file" accept=".har,.json,application/json" hidden>
+      </div>
+    </header>
+
+    <main>
+      <div class="trace-head">
+        <div class="trace-source"><span class="trace-indicator" aria-hidden="true"></span><strong id="source"></strong><span id="source-kind"></span></div>
+        <button id="export" type="button">Export metrics</button>
+      </div>
+      <p id="notice" role="status" aria-live="polite"></p>
+      <dl id="metrics" class="metrics" aria-label="Trace metrics"></dl>
+      <div class="workspace">
+        <section class="panel timeline" aria-labelledby="timeline-title">
+          <div class="panel-top"><h2 id="timeline-title">Request waterfall</h2><span id="shown" aria-live="polite"></span></div>
+          <div class="filters">
+            <label class="search"><span>Find a request</span><input id="query" type="search" placeholder="Path, host or method"></label>
+            <label><span>Host</span><select id="host"><option value="">All hosts</option></select></label>
+            <label><span>Status</span><select id="status"><option value="">All statuses</option><option value="error">HTTP 4xx / 5xx</option><option value="redirect">Redirects</option><option value="unknown">No HTTP status</option></select></label>
+            <label><span>Sort by</span><select id="order"><option value="start">Start time</option><option value="duration">Longest first</option><option value="bytes">Largest first</option></select></label>
+          </div>
+          <div class="table-scroll">
+            <table>
+              <colgroup><col class="request-col"><col class="status-col"><col class="waterfall-col"><col class="duration-col"></colgroup>
+              <thead><tr><th scope="col">Request</th><th scope="col">HTTP</th><th scope="col"><div id="axis" aria-label="Time since start of trace"></div></th><th scope="col" class="numeric">Time</th></tr></thead>
+              <tbody id="requests"></tbody>
+            </table>
+          </div>
+          <div class="panel-foot">
+            <div id="legend" class="legend" aria-label="Timing phases"></div>
+            <div id="pager" class="pager" hidden><button id="previous" type="button">Previous</button><button id="next" type="button">Next</button></div>
+          </div>
+        </section>
+        <aside class="panel inspector" aria-labelledby="detail-title">
+          <div class="panel-top"><h2 id="detail-title">Request details</h2><span id="detail-status"></span></div>
+          <div id="details"></div>
+        </aside>
+      </div>
+    </main>
+    <footer>Drop a HAR anywhere to open it. Details stay in this browser.</footer>
+  </div>
+  <div id="drop" hidden aria-hidden="true"><strong>Drop to open HAR</strong></div>
+  <script>/* APP_SCRIPT */</script>
+</body>
+</html>
